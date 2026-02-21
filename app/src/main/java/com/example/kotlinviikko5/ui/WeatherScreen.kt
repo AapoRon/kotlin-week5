@@ -6,15 +6,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.kotlinviikko5.viewmodel.WeatherUiState
 import com.example.kotlinviikko5.viewmodel.WeatherViewModel
+import kotlinx.coroutines.flow.collectLatest
 
 @Composable
-fun WeatherScreen(
-    vm: WeatherViewModel = viewModel()
-) {
+fun WeatherScreen(vm: WeatherViewModel = viewModel()) {
     var city by remember { mutableStateOf("") }
-    val state by vm.uiState.collectAsState()
+
+    val latest = vm.latestWeather.collectAsState(initial = null).value
+    val loading by vm.loading.collectAsState()
+    val error by vm.error.collectAsState()
 
     Column(
         modifier = Modifier
@@ -22,7 +23,7 @@ fun WeatherScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Sää (OpenWeather)", style = MaterialTheme.typography.headlineSmall)
+        Text("Sää (Room-välimuisti)", style = MaterialTheme.typography.headlineSmall)
 
         OutlinedTextField(
             value = city,
@@ -35,22 +36,23 @@ fun WeatherScreen(
             onClick = { vm.fetchWeather(city) },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Hae")
+            Text("Hae sää")
         }
 
-        when (val s = state) {
-            WeatherUiState.Idle -> Text("Syötä kaupunki ja paina Hae.")
-            WeatherUiState.Loading -> CircularProgressIndicator()
-            is WeatherUiState.Error -> Text(
-                text = "Virhe: ${s.message}",
-                color = MaterialTheme.colorScheme.error
-            )
-            is WeatherUiState.Success -> {
-                val data = s.data
-                Text("Kaupunki: ${data.name}")
-                Text("Lämpötila: ${data.main.temp} °C")
-                Text("Kuvaus: ${data.weather.firstOrNull()?.description ?: "-"}")
-            }
+        if (loading) {
+            CircularProgressIndicator()
+        }
+
+        if (error != null) {
+            Text("Virhe: $error", color = MaterialTheme.colorScheme.error)
+        }
+
+        if (latest != null) {
+            Text("Kaupunki: ${latest.city}")
+            Text("Lämpötila: ${latest.temp} °C")
+            Text("Kuvaus: ${latest.description}")
+        } else {
+            Text("Ei tallennettua säätä vielä. Hae kaupunki.")
         }
     }
 }

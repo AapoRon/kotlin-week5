@@ -1,45 +1,45 @@
 package com.example.kotlinviikko5.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.kotlinviikko5.BuildConfig
-import com.example.kotlinviikko5.model.WeatherResponse
-import com.example.kotlinviikko5.remote.RetrofitInstance
+import com.example.kotlinviikko5.local.DatabaseProvider
+import com.example.kotlinviikko5.repository.WeatherRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-sealed class WeatherUiState {
-    data object Idle : WeatherUiState()
-    data object Loading : WeatherUiState()
-    data class Success(val data: WeatherResponse) : WeatherUiState()
-    data class Error(val message: String) : WeatherUiState()
-}
+class WeatherViewModel(app: Application) : AndroidViewModel(app) {
 
-class WeatherViewModel : ViewModel() {
+    private val repo: WeatherRepository by lazy {
+        val db = DatabaseProvider.get(app)
+        WeatherRepository(db.weatherDao())
+    }
 
-    private val _uiState = MutableStateFlow<WeatherUiState>(WeatherUiState.Idle)
-    val uiState: StateFlow<WeatherUiState> = _uiState.asStateFlow()
+    val latestWeather = repo.observeLatest() // Flow -> UI collectAsState()
+
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error.asStateFlow()
+
+    private val _loading = MutableStateFlow(false)
+    val loading: StateFlow<Boolean> = _loading.asStateFlow()
 
     fun fetchWeather(city: String) {
         if (city.isBlank()) {
-            _uiState.value = WeatherUiState.Error("Anna kaupungin nimi.")
+            _error.value = "Anna kaupungin nimi."
             return
         }
 
         viewModelScope.launch {
-            _uiState.value = WeatherUiState.Loading
+            _loading.value = true
+            _error.value = null
             try {
-                val result = RetrofitInstance.api.getWeatherByCity(
-                    city = city.trim(),
-                    apiKey = BuildConfig.OPENWEATHER_API_KEY
-                )
-                _uiState.value = WeatherUiState.Success(result)
+                repo.refreshIfStale(city.trim())
             } catch (e: Exception) {
-                _uiState.value = WeatherUiState.Error(
-                    e.message ?: "Virhe haettaessa säätä."
-                )
+                _error.value = e.message ?: "Virhe haettaessa säätä."
+            } finally {
+                _loading.value = false
             }
         }
     }
